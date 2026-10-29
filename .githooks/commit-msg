@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# This repo is public: blocks commit messages that contain denylisted names.
+set -euo pipefail
+
+# shellcheck source=SCRIPTDIR/denylist.sh
+. "$(dirname "$0")/denylist.sh"
+
+denylist_check "commit message" <"$1"

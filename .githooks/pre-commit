@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# This repo is public. Blocks commits that carry secrets, misconfigurations,
+# shell script errors or denylisted (internal) names. Tools come from this
+# flake's locked nixpkgs, so nothing needs installing globally.
+set -euo pipefail
+
+if [[ -z ${PRE_COMMIT_TOOLS-} ]]; then
+  export PRE_COMMIT_TOOLS=1
+  exec nix shell --inputs-from . nixpkgs#gitleaks nixpkgs#trivy nixpkgs#shellcheck \
+    --command "$0" "$@"
+fi
+
+# shellcheck source=SCRIPTDIR/denylist.sh
+. "$(dirname "$0")/denylist.sh"
+
+gitleaks git --pre-commit --staged --redact --no-banner --log-level warn
+trivy fs --quiet --table-mode detailed --scanners secret,misconfig --exit-code 1 .
+
+git diff --cached --name-only --diff-filter=ACMR -- '*.sh' '.githooks/*' |
+  while IFS= read -r script; do shellcheck -x "$script" || exit 1; done
+
+{
+  git diff --cached --name-only
+  git diff --cached -U0 | grep '^+' || true
+  git var GIT_AUTHOR_IDENT
+  git var GIT_COMMITTER_IDENT
+} | denylist_check "staged changes or commit identity"
